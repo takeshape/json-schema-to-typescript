@@ -52,10 +52,10 @@ export interface ExampleSchema {
 
 ```sh
 # Using Yarn:
-yarn add json-schema-to-typescript
+yarn add @takeshape/json-schema-to-typescript
 
 # Or, using NPM:
-npm install json-schema-to-typescript --save
+npm install @takeshape/json-schema-to-typescript --save
 ```
 
 ## Usage
