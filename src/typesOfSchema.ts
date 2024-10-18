@@ -9,26 +9,26 @@ import {isCompound, JSONSchema, SchemaType} from './types/JSONSchema'
  * types). The spec leaves it up to implementations to decide what to do with this
  * loosely-defined behavior.
  */
-export function typesOfSchema(schema: JSONSchema): readonly [SchemaType, ...SchemaType[]] {
+export function typesOfSchema(schema: JSONSchema): Set<SchemaType> {
   // tsType is an escape hatch that supercedes all other directives
   if (schema.tsType) {
-    return ['CUSTOM_TYPE']
+    return new Set(['CUSTOM_TYPE'])
   }
 
   // Collect matched types
-  const matchedTypes: SchemaType[] = []
+  const matchedTypes = new Set<SchemaType>()
   for (const [schemaType, f] of Object.entries(matchers)) {
     if (f(schema)) {
-      matchedTypes.push(schemaType as SchemaType)
+      matchedTypes.add(schemaType as SchemaType)
     }
   }
 
   // Default to an unnamed schema
-  if (!matchedTypes.length) {
-    return ['UNNAMED_SCHEMA']
+  if (!matchedTypes.size) {
+    matchedTypes.add('UNNAMED_SCHEMA')
   }
 
-  return matchedTypes as [SchemaType, ...SchemaType[]]
+  return matchedTypes
 }
 
 const matchers: Record<SchemaType, (schema: JSONSchema) => boolean> = {
@@ -65,7 +65,11 @@ const matchers: Record<SchemaType, (schema: JSONSchema) => boolean> = {
     return 'enum' in schema && 'tsEnumNames' in schema
   },
   NAMED_SCHEMA(schema) {
-    return 'id' in schema && ('patternProperties' in schema || 'properties' in schema)
+    // 8.2.1. The presence of "$id" in a subschema indicates that the subschema constitutes a distinct schema resource within a single schema document.
+    return '$id' in schema && ('patternProperties' in schema || 'properties' in schema)
+  },
+  NEVER(schema: JSONSchema | boolean) {
+    return schema === false
   },
   NULL(schema) {
     return schema.type === 'null'
@@ -141,5 +145,5 @@ const matchers: Record<SchemaType, (schema: JSONSchema) => boolean> = {
   },
   UNTYPED_ARRAY(schema) {
     return schema.type === 'array' && !('items' in schema)
-  }
+  },
 }

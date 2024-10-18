@@ -9,6 +9,7 @@ export type SchemaType =
   | 'BOOLEAN'
   | 'NAMED_ENUM'
   | 'NAMED_SCHEMA'
+  | 'NEVER'
   | 'NULL'
   | 'NUMBER'
   | 'STRING'
@@ -33,6 +34,10 @@ export interface JSONSchema extends JSONSchema4 {
    * schema extension to support custom types
    */
   tsType?: string
+  /**
+   * property exists at least in https://json-schema.org/draft/2019-09/json-schema-validation.html#rfc.section.9.3
+   */
+  deprecated?: boolean
 }
 
 export const Parent = Symbol('Parent')
@@ -45,7 +50,7 @@ export interface LinkedJSONSchema extends JSONSchema {
   [Parent]: LinkedJSONSchema | null
 
   additionalItems?: boolean | LinkedJSONSchema
-  additionalProperties: boolean | LinkedJSONSchema
+  additionalProperties?: boolean | LinkedJSONSchema
   items?: LinkedJSONSchema | LinkedJSONSchema[]
   definitions?: {
     [k: string]: LinkedJSONSchema
@@ -65,12 +70,24 @@ export interface LinkedJSONSchema extends JSONSchema {
   not?: LinkedJSONSchema
 }
 
-export interface NormalizedJSONSchema extends LinkedJSONSchema {
+export const Types = Symbol('Types')
+export const Intersection = Symbol('Intersection')
+
+/**
+ * Normalized JSON schema.
+ *
+ * Note: `definitions` and `id` are removed by the normalizer. Use `$defs` and `$id` instead.
+ */
+export interface NormalizedJSONSchema extends Omit<LinkedJSONSchema, 'definitions' | 'id'> {
+  [Intersection]?: NormalizedJSONSchema
+  [Parent]: NormalizedJSONSchema | null
+  [Types]: ReadonlySet<SchemaType>
+
   additionalItems?: boolean | NormalizedJSONSchema
   additionalProperties: boolean | NormalizedJSONSchema
   extends?: string[]
   items?: NormalizedJSONSchema | NormalizedJSONSchema[]
-  definitions?: {
+  $defs?: {
     [k: string]: NormalizedJSONSchema
   }
   properties?: {
@@ -90,7 +107,7 @@ export interface NormalizedJSONSchema extends LinkedJSONSchema {
 }
 
 export interface EnumJSONSchema extends NormalizedJSONSchema {
-  enum: any[]
+  enum: JSONSchema4Type[]
 }
 
 export interface NamedEnumJSONSchema extends NormalizedJSONSchema {
@@ -105,7 +122,7 @@ export interface SchemaSchema extends NormalizedJSONSchema {
 }
 
 export interface JSONSchemaWithDefinitions extends NormalizedJSONSchema {
-  definitions: {
+  $defs: {
     [k: string]: NormalizedJSONSchema
   }
 }
@@ -114,15 +131,17 @@ export interface CustomTypeJSONSchema extends NormalizedJSONSchema {
   tsType: string
 }
 
-export const getRootSchema = memoize(
-  (schema: LinkedJSONSchema): LinkedJSONSchema => {
-    const parent = schema[Parent]
-    if (!parent) {
-      return schema
-    }
-    return getRootSchema(parent)
+export const getRootSchema = memoize((schema: NormalizedJSONSchema): NormalizedJSONSchema => {
+  const parent = schema[Parent]
+  if (!parent) {
+    return schema
   }
-)
+  return getRootSchema(parent)
+})
+
+export function isBoolean(schema: LinkedJSONSchema | JSONSchemaType): schema is boolean {
+  return schema === true || schema === false
+}
 
 export function isPrimitive(schema: LinkedJSONSchema | JSONSchemaType): schema is JSONSchemaType {
   return !isPlainObject(schema)

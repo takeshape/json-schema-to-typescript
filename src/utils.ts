@@ -1,9 +1,11 @@
-import {deburr, isPlainObject, mapValues, trim, upperFirst} from 'lodash'
-import {basename, dirname, extname, join, normalize, sep} from 'path'
-import {JSONSchema, LinkedJSONSchema} from './types/JSONSchema'
+import {deburr, isPlainObject, trim, upperFirst} from 'lodash'
+import {basename, dirname, extname, normalize, sep, posix} from 'path'
+import {Intersection, JSONSchema, LinkedJSONSchema, NormalizedJSONSchema, Parent} from './types/JSONSchema'
+import {JSONSchema4} from 'json-schema'
+import yaml from 'js-yaml'
+import type {Format} from 'cli-color'
 
 // TODO: pull out into a separate package
-// eslint-disable-next-line
 export function Try<T>(fn: () => T, err: (e: Error) => any): T {
   try {
     return fn()
@@ -12,28 +14,10 @@ export function Try<T>(fn: () => T, err: (e: Error) => any): T {
   }
 }
 
-export function mapDeep(object: object, fn: (value: object, key?: string) => object, key?: string): object {
-  return fn(
-    mapValues(object, (_: unknown, key) => {
-      if (isPlainObject(_)) {
-        return mapDeep(_ as object, fn, key)
-      } else if (Array.isArray(_)) {
-        return _.map(item => {
-          if (isPlainObject(item)) {
-            return mapDeep(item as object, fn, key)
-          }
-          return item
-        })
-      }
-      return _
-    }),
-    key
-  )
-}
-
 // keys that shouldn't be traversed by the catchall step
 const BLACKLISTED_KEYS = new Set([
   'id',
+  '$defs',
   '$id',
   '$schema',
   'title',
@@ -65,31 +49,54 @@ const BLACKLISTED_KEYS = new Set([
   'allOf',
   'anyOf',
   'oneOf',
-  'not'
+  'not',
 ])
 
 function traverseObjectKeys(
   obj: Record<string, LinkedJSONSchema>,
-  callback: (schema: LinkedJSONSchema) => void,
-  processed: Set<LinkedJSONSchema>
+  callback: (schema: LinkedJSONSchema, key: string | null) => void,
+  processed: Set<LinkedJSONSchema>,
 ) {
   Object.keys(obj).forEach(k => {
     if (obj[k] && typeof obj[k] === 'object' && !Array.isArray(obj[k])) {
-      traverse(obj[k], callback, processed)
+      traverse(obj[k], callback, processed, k)
     }
   })
 }
+
 function traverseArray(
   arr: LinkedJSONSchema[],
-  callback: (schema: LinkedJSONSchema) => void,
-  processed: Set<LinkedJSONSchema>
+  callback: (schema: LinkedJSONSchema, key: string | null) => void,
+  processed: Set<LinkedJSONSchema>,
 ) {
-  arr.forEach(i => traverse(i, callback, processed))
+  arr.forEach((s, k) => traverse(s, callback, processed, k.toString()))
 }
+
+function traverseIntersection(
+  schema: LinkedJSONSchema,
+  callback: (schema: LinkedJSONSchema, key: string | null) => void,
+  processed: Set<LinkedJSONSchema>,
+) {
+  if (typeof schema !== 'object' || !schema) {
+    return
+  }
+
+  const r = schema as unknown as Record<string | symbol, unknown>
+  const intersection = r[Intersection] as NormalizedJSONSchema | undefined
+  if (!intersection) {
+    return
+  }
+
+  if (Array.isArray(intersection.allOf)) {
+    traverseArray(intersection.allOf, callback, processed)
+  }
+}
+
 export function traverse(
   schema: LinkedJSONSchema,
-  callback: (schema: LinkedJSONSchema) => void,
-  processed = new Set<LinkedJSONSchema>()
+  callback: (schema: LinkedJSONSchema, key: string | null) => void,
+  processed = new Set<LinkedJSONSchema>(),
+  key?: string,
 ): void {
   // Handle recursive schemas
   if (processed.has(schema)) {
@@ -97,7 +104,7 @@ export function traverse(
   }
 
   processed.add(schema)
-  callback(schema)
+  callback(schema, key ?? null)
 
   if (schema.anyOf) {
     traverseArray(schema.anyOf, callback, processed)
@@ -138,9 +145,13 @@ export function traverse(
   if (schema.definitions) {
     traverseObjectKeys(schema.definitions, callback, processed)
   }
+  if (schema.$defs) {
+    traverseObjectKeys(schema.$defs, callback, processed)
+  }
   if (schema.not) {
     traverse(schema.not, callback, processed)
   }
+  traverseIntersection(schema, callback, processed)
 
   // technically you can put definitions on any key
   Object.keys(schema)
@@ -190,7 +201,7 @@ export function toSafeString(string: string) {
       // uppercase first letter after whitespace
       .replace(/\s+([a-zA-Z])/g, match => trim(match.toUpperCase()))
       // remove remaining whitespace
-      .replace(/\s/g, '')
+      .replace(/\s/g, ''),
   )
 }
 
@@ -232,7 +243,7 @@ export function log(style: LogStyle, title: string, ...messages: unknown[]): voi
   if (messages.length > 1 && typeof messages[messages.length - 1] !== 'string') {
     lastMessage = messages.splice(messages.length - 1, 1)
   }
-  console.info(require('cli-color').whiteBright.bgCyan('debug'), getStyledTextForLogging(style)?.(title), ...messages)
+  console.info(color()?.whiteBright.bgCyan('debug'), getStyledTextForLogging(style)?.(title), ...messages)
   if (lastMessage) {
     console.dir(lastMessage, {depth: 6, maxArrayLength: 6})
   }
@@ -244,19 +255,19 @@ function getStyledTextForLogging(style: LogStyle): ((text: string) => string) | 
   }
   switch (style) {
     case 'blue':
-      return require('cli-color').whiteBright.bgBlue
+      return color()?.whiteBright.bgBlue
     case 'cyan':
-      return require('cli-color').whiteBright.bgCyan
+      return color()?.whiteBright.bgCyan
     case 'green':
-      return require('cli-color').whiteBright.bgGreen
+      return color()?.whiteBright.bgGreen
     case 'magenta':
-      return require('cli-color').whiteBright.bgMagenta
+      return color()?.whiteBright.bgMagenta
     case 'red':
-      return require('cli-color').whiteBright.bgRedBright
+      return color()?.whiteBright.bgRedBright
     case 'white':
-      return require('cli-color').black.bgWhite
+      return color()?.black.bgWhite
     case 'yellow':
-      return require('cli-color').whiteBright.bgYellow
+      return color()?.whiteBright.bgYellow
   }
 }
 
@@ -291,7 +302,7 @@ export function pathTransform(outputPath: string, inputPath: string, filePath: s
   const filePathList = dirname(normalize(filePath)).split(sep)
   const filePathRel = filePathList.filter((f, i) => f !== inPathList[i])
 
-  return join(normalize(outputPath), ...filePathRel)
+  return posix.join(posix.normalize(outputPath), ...filePathRel)
 }
 
 /**
@@ -342,22 +353,70 @@ export function maybeStripDefault(schema: LinkedJSONSchema): LinkedJSONSchema {
   return schema
 }
 
-/**
- * Removes the schema's `id`, `name`, and `description` properties
- * if they exist.
- * Useful when parsing intersections.
- *
- * Mutates `schema`.
- */
-export function maybeStripNameHints(schema: JSONSchema): JSONSchema {
-  if ('description' in schema) {
-    delete schema.description
+export function appendToDescription(existingDescription: string | undefined, ...values: string[]): string {
+  if (existingDescription) {
+    return `${existingDescription}\n\n${values.join('\n')}`
   }
-  if ('id' in schema) {
-    delete schema.id
+  return values.join('\n')
+}
+
+export function isSchemaLike(schema: any): schema is LinkedJSONSchema {
+  if (!isPlainObject(schema)) {
+    return false
   }
-  if ('name' in schema) {
-    delete schema.name
+
+  // top-level schema
+  const parent = schema[Parent]
+  if (parent === null) {
+    return true
   }
-  return schema
+
+  const JSON_SCHEMA_KEYWORDS = [
+    '$defs',
+    'allOf',
+    'anyOf',
+    'definitions',
+    'dependencies',
+    'enum',
+    'not',
+    'oneOf',
+    'patternProperties',
+    'properties',
+    'required',
+  ]
+  if (JSON_SCHEMA_KEYWORDS.some(_ => parent[_] === schema)) {
+    return false
+  }
+
+  return true
+}
+
+export function parseFileAsJSONSchema(filename: string | null, contents: string): JSONSchema4 {
+  if (filename != null && isYaml(filename)) {
+    return Try(
+      () => yaml.load(contents.toString()) as JSONSchema4,
+      () => {
+        throw new TypeError(`Error parsing YML in file "${filename}"`)
+      },
+    )
+  }
+
+  return Try(
+    () => JSON.parse(contents.toString()),
+    () => {
+      throw new TypeError(`Error parsing JSON in file "${filename}"`)
+    },
+  )
+}
+
+function isYaml(filename: string) {
+  return filename.endsWith('.yaml') || filename.endsWith('.yml')
+}
+
+function color(): Format {
+  let cliColor
+  try {
+    cliColor = require('cli-color')
+  } catch {}
+  return cliColor
 }
