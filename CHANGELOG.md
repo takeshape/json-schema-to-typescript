@@ -2,6 +2,61 @@
 
 *Note: This is a partial changelog, covering significant & breaking changes. For a full list of changes, please consult the [commit log](https://github.com/bcherny/json-schema-to-typescript/commits).
 
+## 15.0.0
+
+- 62cc052 Fixed bug where intersection schemas didn't generate complete types. Improved output readability for intersection types (#603)
+
+## 14.1.0
+
+- 3e2e1e9 Added `inferStringEnumKeysFromValues` option (#578)
+
+## 14.0.5
+
+- b7fee29 Added .yaml support for CLI (#598)
+
+## 14.0.2
+
+- 9ec0c70 Added .yaml support (#577)
+
+## 14.0.1
+
+- 2f29f19 Added `customName` option
+
+## 14.0.0
+
+- 967eb13 Require Node v16+
+
+## 13.1.0
+
+- f797848 Feat: Add support for `deprecated` keyword
+
+## 13.0.1
+
+- b13a6f2 Bugfix: Boolean CLI flags were not respected (#524)
+
+## 13.0.0
+
+- 05b0103 Bugfix: Parse boolean schemas as schemas, rather than as literals (#515)
+- 8f973d1 Bugfix: Fix edge case where emitted names were corrupted when using `strictIndexSignature` (#423)
+
+## 12.0.0
+
+- b73e1c7 Bugfix: Parse enums as literals, rather than as schemas (#508)
+
+## 11.0.0
+
+This is a major release with lots of bugfixes, some of which may change emitted types.
+
+- 2ca6e50 Bugfix: Fix crash that may happen when emitting types for cyclical schemas (#323, #376)
+- 8fa728e Bugfix: Fix tests on Windows, make snapshot ordering consistent
+- b78a616 Bugfix: Make `compile()` non-mutating (#370, #443)
+- a89ffe1 Bugfix: Add maximum size heuristic for tuple types (#438)
+- 6fbcbc8 Bugfix: Improve performance & stability issue caused by JSON serialization (#422)
+- 7aa353d Feat: Add support for `$id` (#436)
+- 59747b1 Feat: Add support for specifying a default for `additionalProperties` (#335)
+- 966cca5 Cleanup: Drop support for Node 10
+
+
 ## 10.1.0
 
 - ec78099 Feat: Add support for JSON Schema `const` and `$defs` keywords (#263)

@@ -3,26 +3,27 @@ export const input = {
   type: 'object',
   properties: {
     firstName: {
-      type: 'string'
+      type: 'string',
     },
     lastName: {
       id: 'lastName',
-      type: 'string'
+      type: 'string',
     },
     age: {
       description: 'Age in years',
       type: 'integer',
-      minimum: 0
+      minimum: 0,
     },
     height: {
-      type: 'number'
+      $id: 'height',
+      type: 'number',
     },
     favoriteFoods: {
-      type: 'array'
+      type: 'array',
     },
     likesDogs: {
-      type: 'boolean'
-    }
+      type: 'boolean',
+    },
   },
-  required: ['firstName', 'lastName']
+  required: ['firstName', 'lastName'],
 }
